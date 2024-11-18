@@ -1,5 +1,5 @@
 interface Env {
-  OPENAI_API_URL: string;
+  OPENAI_API_DEFAULT_URL: string;
   OPENAI_API_KEY: string;
   OPENAI_DEFAULT_MODEL: string;
   ALLOWED_ORIGINS: string;
@@ -9,22 +9,39 @@ interface RequestBody {
   text: string;
   prompt?: string;
   model?: string;
+  apiUrl?: string;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const origin = request.headers.get("Origin") || "";
+    const allowedOrigins = env.ALLOWED_ORIGINS.split(",").map(o => o.trim());
+    
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     if (request.method !== "POST") {
-      return new Response("Method not allowed", { status: 405 });
+      return new Response("Method not allowed", { 
+        status: 405,
+        headers: corsHeaders 
+      });
     }
 
     try {
-      const { text, prompt, model } = (await request.json()) as RequestBody;
+      const { text, prompt, model, apiUrl } = (await request.json()) as RequestBody;
 
       if (!text || typeof text !== "string" || text.trim().length === 0) {
         return new Response("Text content is required", { status: 400 });
       }
 
-      const openAIResponse = await fetch(env.OPENAI_API_URL, {
+      const openAIResponse = await fetch(apiUrl || env.OPENAI_API_DEFAULT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -60,6 +77,7 @@ export default {
         {
           headers: {
             "Content-Type": "application/json",
+            ...corsHeaders
           },
         }
       );
@@ -72,6 +90,7 @@ export default {
           status: 500,
           headers: {
             "Content-Type": "application/json",
+            ...corsHeaders
           },
         }
       );
